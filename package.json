@@ -1,0 +1,13 @@
+{
+  "name": "binarytree",
+  "version": "0.9.1",
+  "description": "binary search tree (for strings, no object support or typescript support yet)",
+  "exports": "./index.js",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^22.15.30",
+    "better-sqlite3": "^11.9.1",
+    "typescript": "^5.8.3"
+  }
+}
