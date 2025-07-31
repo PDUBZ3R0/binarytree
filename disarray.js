@@ -1,5 +1,5 @@
 
-export default class DisArray extends Array {
+export class DisArray extends Array {
 
     constructor() {
         super();

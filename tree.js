@@ -65,7 +65,7 @@ function node(tree,obj,left,right,excluded=false) {
 	}
 }
 
-export default class BinaryTree {
+export class BinaryTree {
 	constructor(){
 		this.stats = {
 			size: 0,
