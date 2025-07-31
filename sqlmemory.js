@@ -1,6 +1,6 @@
 
 import Database from 'better-sqlite3';
-import DisArray from './disarray.js';
+import { DisArray } from './disarray.js';
 
 const db = new Database();
 
