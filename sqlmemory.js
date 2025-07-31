@@ -2,53 +2,26 @@
 import Database from 'better-sqlite3';
 import DisArray from './disarray.js';
 
-export let ExclusionList = {}
+const db = new Database();
 
-ExclusionList.fromArray = function(exclude) {
-	const db = new Database();
+export class ExclusionList {
+	constructor() {
 
-	let withdupes = 0;
+		let withdupes = 0;
 
-	let stats = {
-		size: 0,
-		duplicates: 0,
-		removed: 0,
-			total(){
-				return this.size+this.removed+this.duplicates
-			}
-	}
-
-	db.pragma('journal_mode = WAL');
-	db.table('xclustate', {
-		columns: ['data', 'excluded'],
-		rows: function* () {
-			for (const item of exclude) {
-				yield { data:item, excluded: 1 };
-			}
-		},
-	});
-
-	db.exec("CREATE TABLE xclu (data TEXT, excluded INTEGER)")
-	db.exec("INSERT INTO xclu SELECT data, excluded FROM xclustate")
-
-	function exporter(sort){
-		return function(){
-			let stmt = db.prepare("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0" + (sort ? " ORDER BY data":""))
-			let rows = stmt.all()
-			stats.size = rows.length;
-			stats.duplicates = withdupes - stats.size
-			let str = (sort ? [] : new DisArray());
-			for (const r of rows) {
-				str.push(r.data)
-			}
-			return str;
+		this.stats = {
+			size: 0,
+			duplicates: 0,
+			removed: 0,
+				total(){
+					return this.size+this.removed+this.duplicates
+				}
 		}
-	}
 
-	return {
-		stats,
+		db.pragma('journal_mode = WAL');
+		db.exec("CREATE TABLE xclu (data TEXT, excluded INTEGER)")
 
-		push(item) {
+		this.push = item => {
 			if (typeof item === 'object' && item instanceof Array) {
 				db.table('inclustate', {
 					columns: ['data', 'excluded'],
@@ -84,8 +57,9 @@ ExclusionList.fromArray = function(exclude) {
 					insert()
 				}
 			}
-		},
-		remove(item){
+		};
+
+		this.remove = item => {
 			function excluded(){
 				let stmt = db.prepare("UPDATE xclu SET excluded = 1 WHERE data = :data AND excluded = 0")
 				const info = stmt.run({ data: item })
@@ -99,10 +73,43 @@ ExclusionList.fromArray = function(exclude) {
 			if (!excluded()){
 				insert()
 			}
-		},
-		export: exporter(true),
-		disarray: exporter(false)
+		};
+
+		function exporter(sort){
+			return function(){
+				let stmt = db.prepare("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0" + (sort ? " ORDER BY data":""))
+				let rows = stmt.all()
+				stats.size = rows.length;
+				stats.duplicates = withdupes - stats.size
+				let str = (sort ? [] : new DisArray());
+				for (const r of rows) {
+					str.push(r.data)
+				}
+				return str;
+			}
+		};
+
+		this.export = exporter(true);
+
+		this.disarray = exporter(false);
+		
 	}
+
 }
 
-export default ExclusionList
+ExclusionList.fromArray = exclude => {
+	let tree = new ExclusionList();
+
+	db.table('xclustate', {
+		columns: ['data', 'excluded'],
+		rows: function* () {
+			for (const item of exclude) {
+				yield { data:item, excluded: 1 };
+			}
+		},
+	});
+
+	db.exec("INSERT INTO xclu SELECT data, excluded FROM xclustate")
+
+	return tree;
+}
