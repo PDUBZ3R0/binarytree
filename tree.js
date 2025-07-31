@@ -1,3 +1,4 @@
+
 import { DisArray } from './disarray.js'
 
 function factory(tree,exmode=false) {
@@ -64,7 +65,7 @@ function node(tree,obj,left,right,excluded=false) {
 	}
 }
 
-export class BinaryTree {
+export default class BinaryTree {
 	constructor(){
 		this.stats = {
 			size: 0,
@@ -158,5 +159,3 @@ export class BinaryTree {
 		}
 	}
 }
-
-export default BinaryTree

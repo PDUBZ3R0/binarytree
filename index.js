@@ -1,9 +1,9 @@
 
-	import DisArray from './disarray.js'
-	import BinaryTree from './tree.js'
-	import ExclusionList from './sqlmemory.js'
+	export { DisArray } from './disarray.js'
+	export { BinaryTree } from './tree.js'
+	export { ExclusionList } from './sqlmemory.js'
 
-	export {
+	export default {
 		DisArray,
 		BinaryTree,
 		ExclusionList

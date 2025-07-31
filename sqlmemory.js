@@ -4,7 +4,7 @@ import DisArray from './disarray.js';
 
 const db = new Database();
 
-export class ExclusionList {
+export default class ExclusionList {
 	constructor() {
 
 		let withdupes = 0;
