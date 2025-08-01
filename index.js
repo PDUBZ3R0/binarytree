@@ -1,10 +1,10 @@
 
-	export { DisArray } from './disarray.js'
 	export { BinaryTree } from './tree.js'
 	export { ExclusionList } from './sqlmemory.js'
+	export { DisArray } from './disarray.js'
 
 	export default {
-		DisArray,
 		BinaryTree,
-		ExclusionList
+		ExclusionList,
+		DisArray
 	}
