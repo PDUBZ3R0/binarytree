@@ -156,10 +156,13 @@ export const ExclusionList = wrapper();
 
 ExclusionList.fromArray = exclude => {
 	return new Promise(async resolve=>{
-		const ArrayFilledExclusionList = wrapper(({ db, fromArray }) => {
+
+		function access({ db, fromArray }){
+			const tree = new ArrayFilledExclusionList();
 			fromArray(db, exclude);
 			resolve (tree);
-		});
-		const tree = new ArrayFilledExclusionList();
+		}
+		
+		const ArrayFilledExclusionList = wrapper(access);
 	})
 }
