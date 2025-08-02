@@ -156,7 +156,7 @@ export const ExclusionList = wrapper();
 
 ExclusionList.fromArray = exclude => {
 	return new Promise(async resolve=>{
-		const ArrayFilledExclusionList = wrapper(({ da, fromArray }) => {
+		const ArrayFilledExclusionList = wrapper(({ db, fromArray }) => {
 			fromArray(db, exclude);
 			resolve (tree);
 		});
