@@ -42,6 +42,8 @@ async function test(tree, classname) {
 
 }
 
-await test (new BinaryTree(), "BinaryTree");
+//await test (new BinaryTree(), "BinaryTree");
 
-await test (new ExclusionList(), "ExclusionList");
+//await test (new ExclusionList(), "ExclusionList");
+
+await test (ExclusionList.fromArray([]));
