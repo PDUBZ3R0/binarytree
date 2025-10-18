@@ -1,31 +1,39 @@
 
 
-import { DisArray } from './disarray.js';
-
-let db, fnpart;
-
-if (process.versions.bun) {
-	const { default: Database } = await import("bun:sqlite");
-	db = new Database(":memory:", { strict: true });
-} else {
-	const { default: Database } = await import("better-sqlite3");
-	db = new Database();
-}
+import { DisArray } from './disarray.js'
+import { mkdirSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { v4 } from 'uuid'
 
 export let ExclusionList = {}
 
+const bintrees = join(tmpdir(), "bintrees");
+
+mkdirSync(bintrees, { recursive: true });
+
+let Database;
+if (process.versions.bun) {
+	const { default: Impl } = await import("bun:sqlite");
+	Database = Impl;
+} else {
+	const { default: Impl } = await import("better-sqlite3");
+	Database = Impl;
+}
+
 ExclusionList.fromArray = function(exclude) {
 	
-
-	let withdupes = 0;
+	let db = new Database(":memory:", { strict: true })
+	
+//	let withdupes = 0;
 
 	let stats = {
 		size: 0,
 		duplicates: 0,
 		removed: 0,
-			total(){
-				return this.size+this.removed+this.duplicates
-			}
+		total(){
+			return this.size+this.removed+this.duplicates
+		}
 	}
 	
 	if (process.versions.bun) {
@@ -53,16 +61,22 @@ ExclusionList.fromArray = function(exclude) {
 	}
 
 	function exporter(sort){
-		return function(){
-			let stmt = db.prepare("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0" + (sort ? " ORDER BY data":""))
-			let rows = stmt.all()
-			stats.size = rows.length;
-			stats.duplicates = withdupes - stats.size
-			let str = (sort ? [] : new DisArray());
-			for (const r of rows) {
-				str.push(r.data)
-			}
-			return str;
+		return function(close){
+			return new Promise(resolve=>{
+				let stmt = db.prepare("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0" + (sort ? " ORDER BY data":""))
+				let rows = stmt.all()
+				stats.size = rows.length;
+				//stats.duplicates = withdupes - stats.size
+				let str = (sort ? [] : new DisArray());
+				for (const r of rows) {
+					str.push(r.data)
+				}
+				resolve(str);
+
+				if (close !== false) {
+					db.close();
+				}
+			})
 		}
 	}
 
@@ -74,11 +88,11 @@ ExclusionList.fromArray = function(exclude) {
 		push(item) {
 			if (typeof item === 'object'){
 				if (item instanceof Array) {
-					if (process.versions.bun){
+					// if (process.versions.bun){
 						for (let i of item) {
 							API.push(i);
 						}
-					} else {
+					/*} else {
 						db.table('inclustate', {
 							columns: ['data', 'excluded'],
 							rows: function* () {
@@ -90,9 +104,9 @@ ExclusionList.fromArray = function(exclude) {
 
 						let stmt = db.prepare("INSERT INTO xclu SELECT data, excluded FROM inclustate WHERE data NOT IN (SELECT data FROM xclu WHERE excluded = 1)")
 						let info = stmt.run()
-						withdupes = info.changes
+						withdupes += info.changes
 						stats.removed = item.length - stats.size
-					}
+					}*/
 				} else {
 					API.push(JSON.stringify(item));
 				}
@@ -133,6 +147,7 @@ ExclusionList.fromArray = function(exclude) {
 				function insert(){
 					let stmt = db.prepare("INSERT INTO xclu (data, excluded) VALUES ($data,1)")
 					stmt.run({ data: item, })
+					stats.size--;
 				}
 				if (!excluded()){
 					insert()

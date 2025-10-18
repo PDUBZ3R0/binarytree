@@ -99,7 +99,7 @@ export class BinaryTree {
 						} else {
 							this._top.add(obj)
 						}
-						setTimeout(resolve,2);
+						setTimeout(resolve,0);
 					}))
 				})
 			}
@@ -120,7 +120,7 @@ export class BinaryTree {
 						} else {
 							this._top.remove(obj)
 						}
-						setTimeout(resolve,2);
+						setTimeout(resolve,0);
 					}))
 				})
 			}
@@ -129,6 +129,7 @@ export class BinaryTree {
 		this.export = function(){
 			return new Promise(resolve=>{
 				Promise.all(tasks).then(()=>{
+					console.log(this._top);
 					let output = [];
 					if (this._top) {
 						let current = this._top;
