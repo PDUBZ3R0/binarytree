@@ -6,158 +6,129 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { v4 } from 'uuid'
 
-export let ExclusionList = {}
+import factory from '@sqlite.org/sqlite-wasm'
 
-const bintrees = join(tmpdir(), "bintrees");
+const verbose = process.argv.includes("--verbose");
 
-mkdirSync(bintrees, { recursive: true });
+const DB = await (async ()=>{
+	const noop = ()=>{};
 
-let Database;
-if (process.versions.bun) {
-	const { default: Impl } = await import("bun:sqlite");
-	Database = Impl;
-} else {
-	const { default: Impl } = await import("better-sqlite3");
-	Database = Impl;
-}
+	const print = verbose ? console.log : noop;
+	const printErr = verbose ? console.error : noop;
 
-ExclusionList.fromArray = function(exclude) {
+	const sqlite3 = await factory({ print, printErr });
+	return sqlite3.oo1.DB;
+})()
+
+export class ExclusionList {
+
+	constructor(exclude) {
 	
-	let db = new Database(":memory:", { strict: true })
-	
-//	let withdupes = 0;
+		let db = new DB()
 
-	let stats = {
-		size: 0,
-		duplicates: 0,
-		removed: 0,
-		total(){
-			return this.size+this.removed+this.duplicates
+		let stats = {
+			size: 0,
+			duplicates: 0,
+			removed: 0,
+			total(){
+				return this.size+this.removed+this.duplicates
+			}
 		}
-	}
-	
-	if (process.versions.bun) {
-		db.exec('pragma journal_mode = WAL');
+		
 		db.exec("CREATE TABLE xclu (data TEXT, excluded INTEGER)")
-		const insert = db.prepare("INSERT INTO xclu (data, excluded) VALUES ($data, $excluded)");
-		const tx = db.transaction(() => {
-			for (const x of exclude) insert.run({ data: x, excluded: 1 });
+		db.transaction(() => {
+			for (const x of exclude) {
+				db.exec({ sql: "INSERT INTO xclu (data, excluded) VALUES (?, ?)", bind: [ x, 1 ]});
+			}
 		});
 
-	} else {
-		db.pragma('journal_mode = WAL');
-	
-		db.table('xclustate', {
-			columns: ['data', 'excluded'],
-			rows: function* () {
-				for (const item of exclude) {
-					yield { data:item, excluded: 1 };
-				}
+		function exporter(sort){
+			return function(close){
+				return new Promise(resolve=>{
+					let values = db.selectValues("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0" + (sort ? " ORDER BY data":""))
+					resolve(values);
+
+					if (close !== false) {
+						db.close();
+					}
+				})
+			}
+		}
+
+		const API = {
+			stats() {
+				return stats
 			},
-		});
 
-		db.exec("CREATE TABLE xclu (data TEXT, excluded INTEGER)")
-		db.exec("INSERT INTO xclu SELECT data, excluded FROM xclustate")
-	}
-
-	function exporter(sort){
-		return function(close){
-			return new Promise(resolve=>{
-				let stmt = db.prepare("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0" + (sort ? " ORDER BY data":""))
-				let rows = stmt.all()
-				stats.size = rows.length;
-				//stats.duplicates = withdupes - stats.size
-				let str = (sort ? [] : new DisArray());
-				for (const r of rows) {
-					str.push(r.data)
-				}
-				resolve(str);
-
-				if (close !== false) {
-					db.close();
-				}
-			})
-		}
-	}
-
-	const API = {
-		stats() {
-			return stats
-		},
-
-		push(item) {
-			if (typeof item === 'object'){
-				if (item instanceof Array) {
-					// if (process.versions.bun){
+			push(item) {
+				if (typeof item === 'object'){
+					if (item instanceof Array) {
 						for (let i of item) {
 							API.push(i);
 						}
-					/*} else {
-						db.table('inclustate', {
-							columns: ['data', 'excluded'],
-							rows: function* () {
-								for (const data of item) {
-									yield { data, excluded: 0 };
-								}
-							},
-						});
-
-						let stmt = db.prepare("INSERT INTO xclu SELECT data, excluded FROM inclustate WHERE data NOT IN (SELECT data FROM xclu WHERE excluded = 1)")
-						let info = stmt.run()
-						withdupes += info.changes
-						stats.removed = item.length - stats.size
-					}*/
-				} else {
-					API.push(JSON.stringify(item));
-				}
-			} else {
-				function excluded(){
-					let stmt = db.prepare("SELECT excluded FROM xclu WHERE data = $data")
-					let entry = stmt.all({ data: item })
-					if (entry.length === 0) {
-						return false;
 					} else {
-						if (entry.excluded === 1) stats.removed++
-						else stats.duplicates++;
-						return true;
+						API.push(JSON.stringify(item));
+					}
+				} else {
+					function excluded(){
+						let excluded = db.selectValue("SELECT excluded FROM xclu WHERE data = ?", [ item ])
+						if (verbose) console.log("push, excluded:", excluded);
+						
+						if (excluded === 0) {
+							stats.duplicates++;
+							return true;
+						} else if (excluded === 1) {
+							stats.removed++
+							return true;
+						} else {
+							return false;
+						}
+					}
+					function insert(){
+						db.exec({ sql: "INSERT INTO xclu (data, excluded) VALUES ($data,0)", bind: [ item ] })
+						if (verbose) console.log("push, (insert)");
+						stats.size++
+					}
+					if (!excluded()){
+						insert()
 					}
 				}
-				function insert(){
-					let stmt = db.prepare("INSERT INTO xclu (data, excluded) VALUES ($data,0)")
-					stmt.run({ data: item, })
-					stats.size++
+			},
+			remove(item){
+				if (typeof item === 'object' && item instanceof Array) {
+					for (let i of item) {
+						API.remove(i);
+					}
+				} else {
+					function excluded(){
+						let excluded = db.selectValue("SELECT excluded FROM xclu WHERE data = ?", [ item ])
+						if (verbose) console.log("remove, excluded:", excluded);
+						
+						if (excluded === 0) {
+							if (verbose) console.log("remove, (update)");
+							db.exec({ sql: "UPDATE xclu SET excluded = 1 WHERE data = ? AND excluded = 0", bind: [ item ] })
+							stats.removed++
+							return true
+						} else {
+							return (excluded !== 1)
+						}
+					}
+					function insert(){
+						if (verbose) console.log("remove, (insert)");
+						db.exec({ sql: "INSERT INTO xclu (data, excluded) VALUES ($data,1)", bind: [ item ] })
+					}
+					if (!excluded()){
+						insert()
+					}
 				}
-				if (!excluded()){
-					insert()
-				}
-			}
-		},
-		remove(item){
-			if (typeof item === 'object' && item instanceof Array) {
-				for (let i of item) {
-					API.remove(i);
-				}
-			} else {
-				function excluded(){
-					let stmt = db.prepare("UPDATE xclu SET excluded = 1 WHERE data = $data AND excluded = 0")
-					const info = stmt.run({ data: item })
-					stats.removed += info.changes
-					return info.changes > 0
-				}
-				function insert(){
-					let stmt = db.prepare("INSERT INTO xclu (data, excluded) VALUES ($data,1)")
-					stmt.run({ data: item, })
-					stats.size--;
-				}
-				if (!excluded()){
-					insert()
-				}
-			}
-		},
-		export: exporter(true),
-		disarray: exporter(false)
+			},
+			export: exporter(true),
+			disarray: exporter(false)
+		}
+		Object.assign(this, API);
 	}
-	return API;
 }
 
-export default ExclusionList
+ExclusionList.fromArray = function(exclude) {
+	return new ExclusionList(exclude);
+}

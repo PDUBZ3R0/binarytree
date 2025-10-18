@@ -4,9 +4,9 @@ import { BinaryTree } from "../tree.js"
 
 import assert from 'node:assert'
 
-async function test(tree, classname) {
+async function test(tree, init, classname) {
+	init(tree);
 
-		tree.remove(["Jesus","Allah","Mohammed","God"]);
 		tree.push("John");
 		tree.push("Eve");
 		tree.push("Eve");
@@ -42,8 +42,8 @@ async function test(tree, classname) {
 
 }
 
-await test (new BinaryTree(), "BinaryTree");
+await test (new BinaryTree(), tree=>{ tree.remove(["Jesus","Allah","Mohammed","God"]); },"BinaryTree");
 
 //await test (new ExclusionList(), "ExclusionList");
 
-await test (ExclusionList.fromArray([]));
+await test (ExclusionList.fromArray(["Jesus","Allah","Mohammed","God"]), ()=>{}, "ExclusionList");

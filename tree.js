@@ -1,6 +1,7 @@
 
 import { DisArray } from './disarray.js'
 
+const verbose = process.argv.includes("--verbose");
 
 export class BinaryTree {
 	constructor(){
@@ -22,8 +23,8 @@ export class BinaryTree {
 				let previous;
 
 				while(!added) {
-
 					if (obj === current.obj) {
+						if (verbose) console.log("match");
 						if (exmode) {
 							if (!current.excluded) {
 								current.excluded = true;
@@ -38,29 +39,23 @@ export class BinaryTree {
 						added = true;
 						
 					} else if (obj < current.obj) {
-						if (current.left !== null && current.left !== previous) {
+						if (current.left !== null) {
 							previous = current
 							current = current.left
 						} else {
-							let n = node(tree, obj, current.left, current, exmode)
-							if (current.left === previous) {
-								previous.right = n;
-							}
-							current.left = n;
+							if (verbose) console.log("left", obj);
+							current.left = node(tree, obj, current, exmode);
 							if (!exmode) stats.size++;
 							added = true;
 						}
 
 					} else if (obj > current.obj) {
-						if (current.right !== null && current.right !== previous) {
+						if (current.right !== null) {
 							previous = current
 							current = current.right
 						} else {
-							let n = node(tree, obj, current, current.right, exmode)
-							if (current.right === previous) {
-								previous.left = n;
-							}
-							current.right = n;
+							if (verbose) console.log("right", obj);
+							current.right = node(tree, obj, current, exmode);
 							if (!exmode) stats.size++;
 							added = true;
 						}
@@ -69,12 +64,13 @@ export class BinaryTree {
 			}
 		}
 
-		function node(tree,obj,left,right,excluded=false) {
+		function node(tree,obj,parent,excluded=false) {
 			return {
 				obj,
-				right,
-				left,
 				excluded,
+				parent,
+				left: null,
+				right: null,
 				add: factory(tree,false),
 				remove: factory(tree, true)
 			}
@@ -95,7 +91,8 @@ export class BinaryTree {
 				Promise.all(tasks).then(()=>{
 					tasks.push(new Promise(resolve=>{
 						if (!this._top) {
-							this._top = node(this, obj, null, null, false)
+							this._top = node(this, obj, null, false)
+							if (verbose) console.log("_top", obj)
 						} else {
 							this._top.add(obj)
 						}
@@ -116,7 +113,8 @@ export class BinaryTree {
 				Promise.all(tasks).then(()=>{
 					tasks.push(new Promise(resolve=>{
 						if (!this._top) {
-							this._top = node(this, obj, null, null, true)
+							this._top = node(this, obj, null, true)
+							if (verbose) console.log("_top", obj)
 						} else {
 							this._top.remove(obj)
 						}
@@ -132,7 +130,14 @@ export class BinaryTree {
 					console.log(this._top);
 					let output = [];
 					if (this._top) {
-						let current = this._top;
+						function node(current) {
+							let list = [];
+							if (current.left) list = [ ...node(current.left)];
+							if (!current.excluded) list.push(current.obj)
+							if (current.right) list = [...list, ...node(current.right)];
+							return list;
+						}
+/*						let current = this._top;
 						if (!current.excluded) output.push(this._top.obj)
 						while (current.left !== null) {
 							current = current.left
@@ -142,7 +147,9 @@ export class BinaryTree {
 						while (current.right !== null) {
 							current = current.right
 							if (!current.excluded) output.push(current.obj)
-						}
+						}*/
+						output = node(this._top);
+
 					}
 					resolve(output);
 				})

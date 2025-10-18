@@ -4,12 +4,10 @@ export class DisArray extends Array {
     constructor() {
         super();
 
-        let __sort__ = DisArray.prototype.sort;
-
-        DisArray.prototype.push = this.displace;
-        DisArray.prototype.sort = this.disarrange;
+        const __sort__ = DisArray.prototype.sort;
 
         DisArray.fromArray = function (a){
+
             Object.assign(a, {
                 displace(item) {
                     let pos = this.length < 2 ? 0 : Math.floor(Math.random() * this.length);
@@ -23,7 +21,7 @@ export class DisArray extends Array {
 
                 disarrange(times=1) {
                     while(times-- > 0) {
-                        __sort__((a, b) => {
+                        sort((a, b) => {
                             return Math.random() > 0.5 ? 1 : -1;
                         })
                     }
@@ -38,6 +36,9 @@ export class DisArray extends Array {
                     return fromArray(out)
                 }
             });
+
+            a.push = this.displace;
+            
             return a;
         };
 
