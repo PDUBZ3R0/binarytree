@@ -5,6 +5,7 @@ import { mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { v4 } from 'uuid'
+import { md5 } from './md5.js'
 
 import factory from '@sqlite.org/sqlite-wasm'
 
@@ -35,17 +36,17 @@ export class ExclusionList {
 			}
 		}
 		
-		db.exec("CREATE TABLE xclu (data TEXT, excluded INTEGER)")
+		db.exec("CREATE TABLE xclu (data TEXT, md5 TEXT, excluded INTEGER)")
 		db.transaction(() => {
 			for (const x of exclude) {
-				db.exec({ sql: "INSERT INTO xclu (data, excluded) VALUES (?, ?)", bind: [ x, 1 ]});
+				db.exec({ sql: "INSERT INTO xclu (data, md5, excluded) VALUES (?, ?, ?)", bind: [ x, md5(x), 1 ]});
 			}
 		});
 
 		function exporter(sort){
 			return function(close){
 				return new Promise(resolve=>{
-					let values = db.selectValues("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0" + (sort ? " ORDER BY data":""))
+					let values = db.selectValues("SELECT DISTINCT(data) as data FROM xclu WHERE excluded = 0 ORDER BY " + (sort ? "data":"md5"));
 					resolve(values);
 
 					if (close !== false) {
@@ -71,7 +72,7 @@ export class ExclusionList {
 					}
 				} else {
 					function excluded(){
-						let excluded = db.selectValue("SELECT excluded FROM xclu WHERE data = ?", [ item ])
+						let excluded = db.selectValue("SELECT excluded FROM xclu WHERE md5 = ?", [ md5(item) ])
 						if (verbose) console.log("push, excluded:", excluded);
 						
 						if (excluded === 0) {
@@ -85,7 +86,7 @@ export class ExclusionList {
 						}
 					}
 					function insert(){
-						db.exec({ sql: "INSERT INTO xclu (data, excluded) VALUES ($data,0)", bind: [ item ] })
+						db.exec({ sql: "INSERT INTO xclu (data, md5, excluded) VALUES (?,?,0)", bind: [ item, md5(item) ] })
 						if (verbose) console.log("push, (insert)");
 						stats.size++
 					}
@@ -101,12 +102,12 @@ export class ExclusionList {
 					}
 				} else {
 					function excluded(){
-						let excluded = db.selectValue("SELECT excluded FROM xclu WHERE data = ?", [ item ])
+						let excluded = db.selectValue("SELECT excluded FROM xclu WHERE md5 = ?", [ md5(item) ])
 						if (verbose) console.log("remove, excluded:", excluded);
 						
 						if (excluded === 0) {
 							if (verbose) console.log("remove, (update)");
-							db.exec({ sql: "UPDATE xclu SET excluded = 1 WHERE data = ? AND excluded = 0", bind: [ item ] })
+							db.exec({ sql: "UPDATE xclu SET excluded = 1 WHERE md5 = ? AND excluded = 0", bind: [ md5(item) ] })
 							stats.removed++
 							return true
 						} else {
@@ -115,7 +116,7 @@ export class ExclusionList {
 					}
 					function insert(){
 						if (verbose) console.log("remove, (insert)");
-						db.exec({ sql: "INSERT INTO xclu (data, excluded) VALUES ($data,1)", bind: [ item ] })
+						db.exec({ sql: "INSERT INTO xclu (data, md5, excluded) VALUES (?,1)", bind: [ item, md5(item) ] })
 					}
 					if (!excluded()){
 						insert()
