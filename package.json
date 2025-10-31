@@ -8,6 +8,7 @@
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "^3.50.4-build1",
     "@types/node": "^22.15.30",
+    "better-sqlite3": "^12.4.1",
     "typescript": "^5.8.3",
     "uuid": "^13.0.0"
   }
