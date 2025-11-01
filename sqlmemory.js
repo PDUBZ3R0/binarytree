@@ -27,7 +27,10 @@ export class ExclusionList {
 
 	constructor(exclude) {
 	
-		let db = init();
+		let tmpdbdir = join(tmpdir(), "sqlmem");
+		mkdirSync(tmpdbdir, { recursive: true });
+		let tmpdb = join(tmpdbdir, v4()+".sqlite");
+		let db = init(tmpdb);
 
 		let stats = {
 			size: 0,
@@ -45,7 +48,7 @@ export class ExclusionList {
 		}
 
 		db.exec("CREATE TABLE xclu (data TEXT, md5 TEXT, excluded INTEGER)");
-		
+
 		for (const x of exclude) {
 			let stmt = db.prepare("INSERT INTO xclu (data, md5, excluded) VALUES (?, ?, ?)")
 			stmt.run( x, md5(x), 1 );
