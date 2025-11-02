@@ -8,6 +8,7 @@ import { v4 } from 'uuid'
 import { md5 } from './md5.js'
 
 const verbose = process.argv.includes("--verbose");
+const tmpfile = process.argv.includes("--tmp");
 
 const init = await (async function(){
 	if (process.versions.bun) {
@@ -28,10 +29,16 @@ export class ExclusionList {
 
 	constructor(exclude) {
 	
-		let tmpdbdir = join(tmpdir(), "sqlmem");
-		mkdirSync(tmpdbdir, { recursive: true });
-		let tmpdb = join(tmpdbdir, v4()+".sqlite");
-		let db = init(tmpdb);
+		let db = (function(){
+			if (tmpfile) {
+				let tmpdbdir = join(tmpdir(), "sqlmem");
+				mkdirSync(tmpdbdir, { recursive: true });
+				let tmpdb = join(tmpdbdir, v4()+".sqlite");
+				return init(tmpdb);
+			} else {
+				return init(":memory:");
+			}
+		})()
 
 		let stats = {
 			size: 0,
@@ -44,21 +51,30 @@ export class ExclusionList {
 
 		if (process.versions.bun) {
 			db.exec("PRAGMA journal_mode = WAL");
+			db.exec("PRAGMA synchronous = normal");
+			db.exec("PRAGMA journal_size_limit = 6144000");
 		} else {
-			db.pragma(" journal_mode = WAL");
+			db.pragma("journal_mode = WAL");
+			db.pragma("synchronous = normal");
+			db.pragma("journal_size_limit = 6144000");
 		}
 
 		db.exec("CREATE TABLE xclu (data TEXT, md5 TEXT, excluded INTEGER)");
 
+		const statements = {
+			insert: db.prepare("INSERT INTO xclu (data, md5, excluded) VALUES ($data, $md5, $excluded)"),
+			update: db.prepare("UPDATE xclu SET excluded = 1 WHERE excluded = 0 AND md5 = $md5"),
+			query: db.prepare("SELECT excluded FROM xclu WHERE md5 = ?")
+		}
+
 		function transact(items) {
-			let insert = db.prepare("INSERT INTO xclu (data, md5, excluded) VALUES ($data, $md5, $excluded)");
-			let update = db.prepare("UPDATE xclu SET excluded = 1 WHERE excluded = 0 AND md5 = $md5");
+			
 			let tx = db.transaction(xclu=>{
 				for (const x of xclu) {
 					if (x.update) {
-						update.run(x);
+						statements.update.run(x);
 					} else {
-						insert.run(x);
+						statements.insert.run(x);
 					}
 				}
 			})
@@ -90,8 +106,7 @@ export class ExclusionList {
 		}
 
 		function pushover(item) {			
-			let query = db.prepare("SELECT excluded FROM xclu WHERE md5 = ?");
-			let q = query.get( md5(item) );
+			let q = statements.query.get( md5(item) );
 			
 			if (!q) {
 				stats.size++;
@@ -106,8 +121,7 @@ export class ExclusionList {
 		}
 
 		function remover(item){
-			let query = db.prepare("SELECT excluded FROM xclu WHERE md5 = ?");
-			let q = query.get( md5(item) );
+			let q = statements.query.get( md5(item) );
 			
 			if (!q) {
 				return { data: item, md5: md5(item), excluded: 1 };
