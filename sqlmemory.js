@@ -14,6 +14,7 @@ const init = await (async function(){
 		if (verbose) console.log ("Detected bun runtime, using: 'bun:sqlite'");
 		const { Database } = await import("bun:sqlite");
 		return function(...opts) {
+			opts.push({ strict: true });
 			return new Database(...opts);
 		}
 	} else {
@@ -49,10 +50,26 @@ export class ExclusionList {
 
 		db.exec("CREATE TABLE xclu (data TEXT, md5 TEXT, excluded INTEGER)");
 
-		for (const x of exclude) {
-			let stmt = db.prepare("INSERT INTO xclu (data, md5, excluded) VALUES (?, ?, ?)")
-			stmt.run( x, md5(x), 1 );
+		function transact(items) {
+			let insert = db.prepare("INSERT INTO xclu (data, md5, excluded) VALUES ($data, $md5, $excluded)");
+			let update = db.prepare("UPDATE xclu SET excluded = 1 WHERE excluded = 0 AND md5 = $md5");
+			let tx = db.transaction(xclu=>{
+				for (const x of xclu) {
+					if (x.update) {
+						update.run(x);
+					} else {
+						insert.run(x);
+					}
+				}
+			})
+			tx(items);
 		}
+
+		let initial = [];
+		for (let i of exclude) {
+			initial.push({ data: i, md5: md5(i), excluded: 1 });
+		}
+		transact(initial);
 
 		function exporter(sort){
 			return function(close){
@@ -72,80 +89,66 @@ export class ExclusionList {
 			}
 		}
 
-		const API = {
+		function pushover(item) {			
+			let query = db.prepare("SELECT excluded FROM xclu WHERE md5 = ?");
+			let q = query.get( md5(item) );
+			
+			if (!q) {
+				stats.size++;
+				return { data: item, md5: md5(item), excluded: 0 };
+			} else {
+				if (q.excluded === 0) {
+					stats.duplicates++;
+				} else {
+					stats.removed++
+				}
+			}
+		}
+
+		function remover(item){
+			let query = db.prepare("SELECT excluded FROM xclu WHERE md5 = ?");
+			let q = query.get( md5(item) );
+			
+			if (!q) {
+				return { data: item, md5: md5(item), excluded: 1 };
+
+			} else if (q.excluded === 0) {	
+				stats.removed++
+				return { md5: md5(item), update: true };
+			}
+		}
+		
+		function enqueue(mode) {
+			return function(item) {
+				if (item instanceof Array) {
+					let queue = [];
+					for (let i of item) {
+						let task = mode(i);
+						if (task) {
+							queue.push(task)
+						}
+					}
+					if (queue.length > 0) {
+						transact(queue);
+					}
+				} else {
+					let task = mode((typeof item === 'object') ? JSON.stringify(item) : item);
+					if (task) transact([task]);
+				}
+			}
+		}
+
+		Object.assign(this, {
 			stats() {
 				return stats
 			},
 
-			push(item) {
-				if (typeof item === 'object'){
-					if (item instanceof Array) {
-						for (let i of item) {
-							API.push(i);
-						}
-					} else {
-						API.push(JSON.stringify(item));
-					}
-				} else {
-					function excluded(){
-						let query = db.prepare("SELECT excluded FROM xclu WHERE md5 = ?");
-						let q = query.get( md5(item) );
-						
-						if (!q) {
-							return false
-						} else {
-							if (q.excluded === 0) {
-								stats.duplicates++;
-							} else {
-								stats.removed++
-							}
-							return true;
-						}
-					}
-					function insert(){
-						let stmt = db.prepare("INSERT INTO xclu (data, md5, excluded) VALUES (?,?,?)");
-						stmt.run( item, md5(item), 0 );
-						stats.size++
-					}
-					if (!excluded()){
-						insert()
-					}
-				}
-			},
-			remove(item){
-				if (typeof item === 'object' && item instanceof Array) {
-					for (let i of item) {
-						API.remove(i);
-					}
-				} else {
-					function excluded(){
-						let query = db.prepare("SELECT excluded FROM xclu WHERE md5 = ?");
-						let q = query.get( md5(item) );
-						
-						if (!q) {
-							return false
-						} else {
-							if (q.excluded === 0) {
-								let stmt = db.prepare("UPDATE xclu SET excluded = 1 WHERE excluded = 0 AND md5 = ?");
-								stmt.run( md5(item) );
-								stats.removed++
-							}
-							return true;
-						}
-					}
-					function insert(){
-						let stmt = db.prepare("INSERT INTO xclu (data, md5, excluded) VALUES (?,?,?)");
-						stmt.run( item, md5(item), 1 );
-					}
-					if (!excluded()){
-						insert()
-					}
-				}
-			},
+			push: enqueue(pushover),
+			remove: enqueue(remover),
+
 			export: exporter(true),
-			disarray: exporter(false)
-		}
-		Object.assign(this, API);
+			disarray: exporter(false),
+		});
 	}
 }
 
